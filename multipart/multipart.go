@@ -21,7 +21,7 @@ import (
 	"mime"
 	"net/textproto"
 
-	"github.com/cention-sany/mime/quotedprintable"
+	"github.com/cention-sany/mime/quotedprintable" // use modified qp
 )
 
 var emptyParams = make(map[string]string)
