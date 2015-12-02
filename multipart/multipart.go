@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mime"
 	"net/textproto"
 
+	"github.com/cention-sany/mime"
 	"github.com/cention-sany/mime/quotedprintable" // use modified qp
 )
 
@@ -83,7 +83,7 @@ func (p *Part) parseContentDisposition() {
 	v := p.Header.Get("Content-Disposition")
 	var err error
 	p.disposition, p.dispositionParams, err = mime.ParseMediaType(v)
-	if err != nil {
+	if err != nil && err != mime.BuggyMediaType {
 		p.dispositionParams = emptyParams
 	}
 }
