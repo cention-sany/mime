@@ -175,7 +175,7 @@ func TestParseMediaType(t *testing.T) {
 		{`inline; attachment; filename=foo.html`,
 			"", m()},
 		{`attachment; filename="foo.html".txt`,
-			"", m()},
+			"attachment", m("filename", "foo.html")},
 		{`attachment; filename="bar`,
 			"", m()},
 		{`attachment; creation-date="Wed, 12 Feb 1997 16:29:51 -0500"`,
@@ -217,10 +217,15 @@ func TestParseMediaType(t *testing.T) {
 		{`form-data; firstname="Брэд"; lastname="Фицпатрик"`,
 			"form-data",
 			m("firstname", "Брэд", "lastname", "Фицпатрик")},
+
+		// discriminate ignorable error
+		{`application/octet-stream; name=Viktoria C`,
+			"application/octet-stream",
+			m("name", "Viktoria")},
 	}
 	for _, test := range tests {
 		mt, params, err := ParseMediaType(test.in)
-		if err != nil {
+		if err != nil && err != BuggyMediaType {
 			if test.t != "" {
 				t.Errorf("for input %q, unexpected error: %v", test.in, err)
 				continue
