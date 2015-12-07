@@ -1,0 +1,1 @@
+{"name":"Golang mime package","tagline":"Modified golang stdlib mime package","body":"# mime\r\nThs mime package is cloned from golang stdlib 1.5.1 and added some features \r\nto allow the package to handle some bad email.","google":"","note":"Don't delete this file! It's used internally to help with page regeneration."}
