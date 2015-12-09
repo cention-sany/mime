@@ -113,8 +113,8 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 			r.line = r.line[2:] // 2 of the 3; other 1 is done below
 		case b == '\t' || b == '\r' || b == '\n':
 			break
-		case b < ' ' || b > '~':
-			return n, fmt.Errorf("quotedprintable: invalid unescaped byte 0x%02x in body", b)
+			// case b < ' ' || b > '~':
+			// 	return n, fmt.Errorf("quotedprintable: invalid unescaped byte 0x%02x in body", b)
 		}
 		p[0] = b
 		p = p[1:]
