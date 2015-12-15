@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/textproto"
+	"strings"
 
 	"github.com/cention-sany/mime"
 	"github.com/cention-sany/mime/quotedprintable" // use modified qp
@@ -112,13 +113,18 @@ func newPart(mr *Reader) (*Part, error) {
 		buffer: new(bytes.Buffer),
 	}
 	if err := bp.populateHeaders(); err != nil {
-		return nil, err
-	}
-	bp.r = partReader{bp}
-	const cte = "Content-Transfer-Encoding"
-	if bp.Header.Get(cte) == "quoted-printable" {
-		bp.Header.Del(cte)
-		bp.r = quotedprintable.NewReader(bp.r)
+		if !strings.HasPrefix(err.Error(), "malformed MIME header") {
+			return nil, err
+		}
+		bp.r = partReader{bp}
+		return bp, err
+	} else {
+		bp.r = partReader{bp}
+		const cte = "Content-Transfer-Encoding"
+		if bp.Header.Get(cte) == "quoted-printable" {
+			bp.Header.Del(cte)
+			bp.r = quotedprintable.NewReader(bp.r)
+		}
 	}
 	return bp, nil
 }
@@ -225,6 +231,58 @@ type Reader struct {
 	dashBoundary     []byte // "--boundary"
 }
 
+// This will allow whether NextPart is a valid part or not.
+// It does not advance the buffer in Reader r. Though it can not
+// the internally whether the NextPart is valid or not but it can
+// tell whether next part is EOF or not.
+func (r *Reader) CheckNextPart() error {
+	expectNewPart := false
+	n := r.bufReader.Buffered()
+	nb, err := r.bufReader.Peek(n)
+	if err != nil {
+		return err
+	}
+	bfb := bufio.NewReader(bytes.NewReader(nb))
+	for {
+		line, err := bfb.ReadSlice('\n')
+		if err == io.EOF && r.isFinalBoundary(line) {
+			// If the buffer ends in "--boundary--" without the
+			// trailing "\r\n", ReadSlice will return an error
+			// (since it's missing the '\n'), but this is a valid
+			// multipart EOF so we need to return io.EOF instead of
+			// a fmt-wrapped one.
+			return io.EOF
+		}
+		if err != nil {
+			return fmt.Errorf("multipart: CheckNextPart: %v", err)
+		}
+		if r.isBoundaryDelimiterLine(line) {
+			r.partsRead++
+			return nil
+		}
+		if r.isFinalBoundary(line) {
+			// Expected EOF
+			return io.EOF
+		}
+		if expectNewPart {
+			return fmt.Errorf("multipart: expecting a new Part; got line %q", string(line))
+		}
+		if r.partsRead == 0 {
+			// skip line
+			continue
+		}
+		// Consume the "\n" or "\r\n" separator between the
+		// body of the previous part and the boundary line we
+		// now expect will follow. (either a new part or the
+		// end boundary)
+		if bytes.Equal(line, r.nl) {
+			expectNewPart = true
+			continue
+		}
+		return fmt.Errorf("multipart: unexpected line in CheckNextPart(): %q", line)
+	}
+}
+
 // NextPart returns the next part in the multipart or an error.
 // When there are no more parts, the error io.EOF is returned.
 func (r *Reader) NextPart() (*Part, error) {
@@ -251,6 +309,11 @@ func (r *Reader) NextPart() (*Part, error) {
 			r.partsRead++
 			bp, err := newPart(r)
 			if err != nil {
+				if strings.HasPrefix(err.Error(), "malformed MIME header") {
+					// retain the content even header is malformed
+					r.currentPart = bp
+					return bp, err
+				}
 				return nil, err
 			}
 			r.currentPart = bp
