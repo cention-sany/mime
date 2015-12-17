@@ -257,7 +257,6 @@ func (r *Reader) CheckNextPart() error {
 			return fmt.Errorf("multipart: CheckNextPart: %v", err)
 		}
 		if r.isBoundaryDelimiterLine(line) {
-			r.partsRead++
 			return nil
 		}
 		if r.isFinalBoundary(line) {
