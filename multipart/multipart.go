@@ -133,7 +133,7 @@ func newPart(mr *Reader) (*Part, error) {
 func (bp *Part) populateHeaders() error {
 	r := textproto.NewReader(bp.mr.bufReader)
 	header, err := r.ReadMIMEHeader()
-	if err == nil {
+	if err == nil || strings.HasPrefix(err.Error(), "malformed MIME header") {
 		bp.Header = header
 	}
 	return err
