@@ -18,11 +18,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/textproto"
+	//"net/textproto"
 	"strings"
 
 	"github.com/cention-sany/mime"
 	"github.com/cention-sany/mime/quotedprintable" // use modified qp
+	"github.com/cention-sany/net/textproto"
 )
 
 var emptyParams = make(map[string]string)

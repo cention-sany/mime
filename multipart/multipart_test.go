@@ -10,11 +10,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/textproto"
+	//"net/textproto"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/cention-sany/net/textproto"
 )
 
 func TestBoundaryLine(t *testing.T) {

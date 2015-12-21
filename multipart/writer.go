@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/textproto"
+	//"net/textproto"
 	"strings"
+
+	"github.com/cention-sany/net/textproto"
 )
 
 // A Writer generates multipart messages.

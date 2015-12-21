@@ -9,8 +9,10 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"net/textproto"
+	//"net/textproto"
 	"os"
+
+	"github.com/cention-sany/net/textproto"
 )
 
 // TODO(adg,bradfitz): find a way to unify the DoS-prevention strategy here
