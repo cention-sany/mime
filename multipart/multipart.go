@@ -113,29 +113,20 @@ func newPart(mr *Reader) (*Part, error) {
 		mr:     mr,
 		buffer: new(bytes.Buffer),
 	}
-	if err := bp.populateHeaders(); err != nil {
-		if !strings.HasPrefix(err.Error(), "malformed MIME header") {
-			return nil, err
-		}
-		bp.r = partReader{bp}
-		return bp, err
-	} else {
-		bp.r = partReader{bp}
-		const cte = "Content-Transfer-Encoding"
-		if bp.Header.Get(cte) == "quoted-printable" {
-			bp.Header.Del(cte)
-			bp.r = quotedprintable.NewReader(bp.r)
-		}
+	err := bp.populateHeaders()
+	bp.r = partReader{bp}
+	const cte = "Content-Transfer-Encoding"
+	if bp.Header.Get(cte) == "quoted-printable" {
+		bp.Header.Del(cte)
+		bp.r = quotedprintable.NewReader(bp.r)
 	}
-	return bp, nil
+	return bp, err
 }
 
 func (bp *Part) populateHeaders() error {
 	r := textproto.NewReader(bp.mr.bufReader)
 	header, err := r.ReadMIMEHeader()
-	if err == nil || strings.HasPrefix(err.Error(), "malformed MIME header") {
-		bp.Header = header
-	}
+	bp.Header = header
 	return err
 }
 
