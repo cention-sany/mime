@@ -1,4 +1,4 @@
-# quotedprintable
+# quotedprintable [![GoDoc](https://godoc.org/github.com/cention-sany/mime/quotedprintable?status.png)](https://godoc.org/github.com/cention-sany/mime/quotedprintable)
 
 ## Introduction
 
