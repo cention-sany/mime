@@ -90,7 +90,9 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 				rightStripped := wholeLine[len(r.line):]
 				r.line = r.line[:len(r.line)-1]
 				if !bytes.HasPrefix(rightStripped, lf) && !bytes.HasPrefix(rightStripped, crlf) {
-					r.rerr = fmt.Errorf("quotedprintable: invalid bytes after =: %q", rightStripped)
+					if r.rerr != io.EOF {
+						r.rerr = fmt.Errorf("quotedprintable: invalid bytes after =: %q", rightStripped)
+					}
 				}
 			} else if hasLF {
 				if hasCR {
