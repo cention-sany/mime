@@ -112,7 +112,20 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, err e
 
 	err = checkMediaTypeDisposition(mediatype)
 	if err != nil {
-		return "", nil, err
+		s := err.Error()
+		if s == "mime: expected token after slash" {
+			n := strings.Index(mediatype, "/")
+			if n == -1 {
+				return "", nil, err
+			}
+			mediatype = fmt.Sprint(string(mediatype[:n]), "/unknown")
+			err = nil
+		} else if s == "mime: no media type" && v != "" {
+			mediatype = "unknown"
+			err = nil
+		} else {
+			return "", nil, err
+		}
 	}
 
 	params = make(map[string]string)
@@ -135,7 +148,7 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, err e
 				// Not an error.
 				return
 			}
-			if mediatype != "" && len(params) > 0 {
+			if mediatype != "" /*&& len(params) > 0*/ {
 				return mediatype, params, BuggyMediaType
 			}
 			// Parse error.
@@ -154,11 +167,13 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, err e
 				pmap = continuation[baseName]
 			}
 		}
-		if _, exists := pmap[key]; exists {
-			// Duplicate parameter name is bogus.
-			return "", nil, errors.New("mime: duplicate parameter name")
+		// if _, exists := pmap[key]; exists {
+		// 	// Duplicate parameter name is bogus.
+		// 	return "", nil, errors.New("mime: duplicate parameter name")
+		// }
+		if _, exists := pmap[key]; !exists {
+			pmap[key] = value
 		}
-		pmap[key] = value
 		v = rest
 	}
 
