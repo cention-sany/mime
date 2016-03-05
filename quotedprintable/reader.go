@@ -109,6 +109,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		case b == '=':
 			b, err = readHexByte(r.line[1:])
 			if err != nil {
+				b = '='
 				break // this modification allow bad email to be parsed too
 				//return n, err
 			}
