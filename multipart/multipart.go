@@ -85,7 +85,7 @@ func (p *Part) parseContentDisposition() {
 	v := p.Header.Get("Content-Disposition")
 	var err error
 	p.disposition, p.dispositionParams, err = mime.ParseMediaType(v)
-	if err != nil && err != mime.BuggyMediaType {
+	if err != nil && mime.IsOkPMTError(err) != nil {
 		p.dispositionParams = emptyParams
 	}
 }

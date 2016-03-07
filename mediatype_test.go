@@ -116,7 +116,7 @@ func TestParseMediaType(t *testing.T) {
 			m("key", "value", "blah", "value", "name", "foo")},
 
 		{`foo; key=val1; key=the-key-appears-again-which-is-bogus`,
-			"", m()},
+			"foo", m(`key`, `val1`)},
 
 		// From RFC 2231:
 		{`application/x-stuff; title*=us-ascii'en-us'This%20is%20%2A%2A%2Afun%2A%2A%2A`,
@@ -167,17 +167,17 @@ func TestParseMediaType(t *testing.T) {
 			"attachment",
 			m("filename", "foo-%41.html")},
 		{`filename=foo.html`,
-			"", m()},
+			"filename/unknown", m()},
 		{`x=y; filename=foo.html`,
-			"", m()},
+			"x/unknown", m("filename", "foo.html")},
 		{`"foo; filename=bar;baz"; filename=qux`,
 			"", m()},
 		{`inline; attachment; filename=foo.html`,
-			"", m()},
+			"inline", m()},
 		{`attachment; filename="foo.html".txt`,
 			"attachment", m("filename", "foo.html")},
 		{`attachment; filename="bar`,
-			"", m()},
+			"attachment", m()},
 		{`attachment; creation-date="Wed, 12 Feb 1997 16:29:51 -0500"`,
 			"attachment",
 			m("creation-date", "Wed, 12 Feb 1997 16:29:51 -0500")},
@@ -218,6 +218,22 @@ func TestParseMediaType(t *testing.T) {
 			"form-data",
 			m("firstname", "Брэд", "lastname", "Фицпатрик")},
 
+		// cention - bad formatted emails
+		{`text/html; charset=iso-8859-1; charset=utf-8`,
+			"text/html",
+			m("charset", "iso-8859-1")},
+		{`text/plain; charset=""`,
+			"text/plain", m()},
+		{`IMAGE/; CHARSET=UTF-8; name="Pennygirl.PNG"`,
+			"image/unknown",
+			m("charset", "UTF-8", "name", "Pennygirl.PNG")},
+		{`IMAGE/; CHARSET=UTF-8; name="Pennygirl.PNG"`,
+			"image/unknown",
+			m("charset", "UTF-8", "name", "Pennygirl.PNG")},
+		{`PDF; name="4707810273.PDF"`, // appear on Content-Type
+			"pdf",
+			m("name", "4707810273.PDF")},
+
 		// discriminate ignorable error
 		{`application/octet-stream; name=Viktoria C`,
 			"application/octet-stream",
@@ -225,7 +241,7 @@ func TestParseMediaType(t *testing.T) {
 	}
 	for _, test := range tests {
 		mt, params, err := ParseMediaType(test.in)
-		if err != nil && err != BuggyMediaType {
+		if err != nil && IsOkPMTError(err) != nil {
 			if test.t != "" {
 				t.Errorf("for input %q, unexpected error: %v", test.in, err)
 				continue
@@ -252,29 +268,30 @@ func TestParseMediaType(t *testing.T) {
 type badMediaTypeTest struct {
 	in  string
 	err string
+	mt  string
 }
 
 var badMediaTypeTests = []badMediaTypeTest{
-	{"bogus ;=========", "mime: invalid media parameter"},
-	{"bogus/<script>alert</script>", "mime: expected token after slash"},
-	{"bogus/bogus<script>alert</script>", "mime: unexpected content after media subtype"},
+	{"bogus ;=========", "false [mime: invalid media parameter]", "bogus"},
+	{"bogus/<script>alert</script>", "false [mime: expected token after slash]", "bogus/unknown"},
+	{"bogus/bogus<script>alert</script>", "false [mime: unexpected content after media subtype]", "bogus/bogus"},
 }
 
 func TestParseMediaTypeBogus(t *testing.T) {
 	for _, tt := range badMediaTypeTests {
 		mt, params, err := ParseMediaType(tt.in)
 		if err == nil {
-			t.Errorf("ParseMediaType(%q) = nil error; want parse error", tt.in)
+			t.Errorf("ParseMediaType(%q) = nil error; want parse error %v %v", tt.in, mt, params)
 			continue
 		}
 		if err.Error() != tt.err {
 			t.Errorf("ParseMediaType(%q) = err %q; want %q", tt.in, err.Error(), tt.err)
 		}
-		if params != nil {
+		if params != nil && len(params) != 0 {
 			t.Errorf("ParseMediaType(%q): got non-nil params on error", tt.in)
 		}
-		if mt != "" {
-			t.Errorf("ParseMediaType(%q): got non-empty media type string on error", tt.in)
+		if mt != tt.mt {
+			t.Errorf("ParseMediaType(%q): got media type %s string. want media type %s", tt.in, mt, tt.mt)
 		}
 	}
 }

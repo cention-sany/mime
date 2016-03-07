@@ -13,7 +13,58 @@ import (
 	"unicode"
 )
 
-var BuggyMediaType = errors.New("mime: Buggy media type. Let source generator know")
+// PMTErr is merged parse media type error that still maintain the stdlib
+// error return by ParseMediaType func but has indication that whether
+// the erorr can be ignored or not.
+type PMTErr struct {
+	errs []error
+	bad  bool
+}
+
+// imeplement error interface
+func (p *PMTErr) Error() string {
+	return fmt.Sprint(p.bad, p.errs)
+}
+
+// add error that can be ignored like nil and use the returned value
+// from ParseMediaType safely.
+func (p *PMTErr) add(err error) *PMTErr {
+	p.errs = append(p.errs, err)
+	return p
+}
+
+// add error that consider serious and must be treaded as error
+func (p *PMTErr) addUnrecover(err error) *PMTErr {
+	p.errs = append(p.errs, err)
+	p.bad = true
+	return p
+}
+
+// ParseMediaType should return this func as its error instead of
+// the pointer of PMTErr as empty error is nil and not a pointer.
+func (p *PMTErr) getErr() error {
+	if len(p.errs) == 0 {
+		return nil
+	}
+	return p
+}
+
+// Program that use ParseMediaType can determine the returned error
+// whether can be ignored or not. Put in the returne error from
+// ParseMediaType to this func and nil output from this func indicates
+// the error can be safely ignored meeanwhile non-nil means there is
+// serious unavoidable error.
+func IsOkPMTError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if p, ok := err.(*PMTErr); ok {
+		if !p.bad {
+			return nil
+		}
+	}
+	return err
+}
 
 // FormatMediaType serializes mediatype t and the parameters
 // param as a media type conforming to RFC 2045 and RFC 2616.
@@ -75,25 +126,58 @@ func FormatMediaType(t string, param map[string]string) string {
 	return b.String()
 }
 
+var (
+	mimeNoMediaType       = errors.New("mime: no media type")
+	mimeNoSlash           = errors.New("mime: expected slash after first token")
+	mimeTokenSlash        = errors.New("mime: expected token after slash")
+	mimeUnexpectedContent = errors.New("mime: unexpected content after media subtype")
+	mimeInvalidParam      = errors.New("mime: invalid media parameter")
+)
+
 func checkMediaTypeDisposition(s string) error {
 	typ, rest := consumeToken(s)
 	if typ == "" {
-		return errors.New("mime: no media type")
+		return mimeNoMediaType
 	}
 	if rest == "" {
 		return nil
 	}
 	if !strings.HasPrefix(rest, "/") {
-		return errors.New("mime: expected slash after first token")
+		return mimeNoSlash
 	}
 	subtype, rest := consumeToken(rest[1:])
 	if subtype == "" {
-		return errors.New("mime: expected token after slash")
+		return mimeTokenSlash
 	}
 	if rest != "" {
-		return errors.New("mime: unexpected content after media subtype")
+		return mimeUnexpectedContent
 	}
 	return nil
+}
+
+func lossyCheckMediaTypeDisposition(p *PMTErr, s string) (string, error) {
+	typ, rest := consumeToken(s)
+	if typ == "" {
+		p.addUnrecover(mimeNoMediaType)
+		return "", mimeNoMediaType
+	}
+	if rest == "" {
+		return typ, nil
+	}
+	if !strings.HasPrefix(rest, "/") {
+		p.add(mimeNoSlash)
+		return fmt.Sprint(typ, "/unknown"), mimeNoSlash
+	}
+	subtype, rest := consumeToken(rest[1:])
+	if subtype == "" {
+		p.add(mimeTokenSlash)
+		return fmt.Sprint(typ, "/unknown"), mimeTokenSlash
+	}
+	if rest != "" {
+		p.add(mimeUnexpectedContent)
+		return fmt.Sprint(typ, "/", subtype), mimeUnexpectedContent
+	}
+	return s, nil
 }
 
 // ParseMediaType parses a media type value and any optional
@@ -103,16 +187,22 @@ func checkMediaTypeDisposition(s string) error {
 // to lowercase and trimmed of white space and a non-nil map.
 // The returned map, params, maps from the lowercase
 // attribute to the attribute value with its case preserved.
-func ParseMediaType(v string) (mediatype string, params map[string]string, err error) {
+func ParseMediaType(v string) (mediatype string, params map[string]string, gerr error) {
+	p := &PMTErr{}
 	i := strings.Index(v, ";")
 	if i == -1 {
 		i = len(v)
 	}
 	mediatype = strings.TrimSpace(strings.ToLower(v[0:i]))
 
-	err = checkMediaTypeDisposition(mediatype)
+	mediatype, err := lossyCheckMediaTypeDisposition(p, mediatype)
 	if err != nil {
-		return "", nil, err
+		if p.bad {
+			return "", nil, err
+		} else {
+			//return mediatype, nil, p
+			gerr = p
+		}
 	}
 
 	params = make(map[string]string)
@@ -135,11 +225,18 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, err e
 				// Not an error.
 				return
 			}
-			if mediatype != "" && len(params) > 0 {
-				return mediatype, params, BuggyMediaType
+			if mediatype != "" {
+				gerr = p.add(mimeInvalidParam)
+				return
+			} else {
+				return "", nil, mimeInvalidParam
 			}
-			// Parse error.
-			return "", nil, errors.New("mime: invalid media parameter")
+
+			// if mediatype != "" /*&& len(params) > 0*/ {
+			// 	return mediatype, params, BuggyMediaType
+			// }
+			// // Parse error.
+			// return "", nil, errors.New("mime: invalid media parameter")
 		}
 
 		pmap := params
@@ -154,11 +251,15 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, err e
 				pmap = continuation[baseName]
 			}
 		}
-		if _, exists := pmap[key]; exists {
-			// Duplicate parameter name is bogus.
-			return "", nil, errors.New("mime: duplicate parameter name")
+		// if _, exists := pmap[key]; exists {
+		// 	// Duplicate parameter name is bogus.
+		// 	return "", nil, errors.New("mime: duplicate parameter name")
+		// }
+		if _, exists := pmap[key]; !exists {
+			pmap[key] = value
+		} else {
+			gerr = p.add(errors.New("mime: duplicate parameter name"))
 		}
-		pmap[key] = value
 		v = rest
 	}
 
