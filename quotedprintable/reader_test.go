@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-func TestReader(t *testing.T) {
+func TestStrictReader(t *testing.T) {
 	tests := []struct {
 		in, want string
 		err      interface{}
@@ -30,14 +30,14 @@ func TestReader(t *testing.T) {
 		{in: "foo bar=3d", want: "foo bar="}, // lax.
 		{in: "foo bar=\n", want: "foo bar"},
 		{in: "foo bar\n", want: "foo bar\n"}, // somewhat lax.
-		{in: "foo bar=0", want: "foo bar", err: io.ErrUnexpectedEOF},
+		{in: "foo bar=0", want: "foo bar=0", err: io.ErrUnexpectedEOF},
 		{in: "foo bar=0D=0A", want: "foo bar\r\n"},
 		{in: " A B        \r\n C ", want: " A B\r\n C"},
 		{in: " A B =\r\n C ", want: " A B  C"},
 		{in: " A B =\n C ", want: " A B  C"}, // lax. treating LF as CRLF
 		{in: "foo=\nbar", want: "foobar"},
-		{in: "foo\x00bar", want: "foo", err: "quotedprintable: invalid unescaped byte 0x00 in body"},
-		{in: "foo bar\xff", want: "foo bar", err: "quotedprintable: invalid unescaped byte 0xff in body"},
+		{in: "foo\x00bar", want: "foo\x00bar", err: "quotedprintable: invalid unescaped byte 0x00 in body"},
+		{in: "foo bar\xff", want: "foo bar\xff", err: "quotedprintable: invalid unescaped byte 0xff in body"},
 
 		// Equal sign.
 		{in: "=3D30\n", want: "=30\n"},
@@ -52,16 +52,94 @@ func TestReader(t *testing.T) {
 		{in: "foo\nbar", want: "foo\nbar"},
 		{in: "foo\rbar", want: "foo\rbar"},
 		{in: "foo\r\nbar", want: "foo\r\nbar"},
+		{in: "foo=\r\nbar", want: "foobar"},
 
 		// Different types of soft line-breaks.
 		{in: "foo=\r\nbar", want: "foobar"},
 		{in: "foo=\nbar", want: "foobar"},
-		{in: "foo=\rbar", want: "foo", err: "quotedprintable: invalid hex byte 0x0d"},
+		{in: "foo=\rbar", want: "foo=\rbar", err: "quotedprintable: invalid hex byte 0x0d"},
 		{in: "foo=\r\r\r \nbar", want: "foo", err: `quotedprintable: invalid bytes after =: "\r\r\r \n"`},
 
 		// Example from RFC 2045:
 		{in: "Now's the time =\n" + "for all folk to come=\n" + " to the aid of their country.",
 			want: "Now's the time for all folk to come to the aid of their country."},
+
+		// Cention bad email
+		{in: "Sendt fra min iPad=", want: "Sendt fra min iPad", err: "quotedprintable: invalid bytes after =: \"\""},
+		{in: "<div src=\"http://123.456.789.88\">", want: "<div src=\"http://123.456.789.88\">",
+			err: "quotedprintable: invalid hex byte 0x22"},
+	}
+	for _, tt := range tests {
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, NewStrictReader(strings.NewReader(tt.in)))
+		if got := buf.String(); got != tt.want {
+			t.Errorf("for %q, got %q; want %q", tt.in, got, tt.want)
+		}
+		switch verr := tt.err.(type) {
+		case nil:
+			if err != nil && err != io.EOF {
+				t.Errorf("for %q, got unexpected error: %v", tt.in, err)
+			}
+		case string:
+			if got := fmt.Sprint(err); got != verr {
+				t.Errorf("for %q, got error %q; want %q", tt.in, got, verr)
+			}
+		case error:
+			if err != verr {
+				t.Errorf("for %q, got error %q; want %q", tt.in, err, verr)
+			}
+		}
+	}
+}
+
+func TestReader(t *testing.T) {
+	tests := []struct {
+		in, want string
+		err      interface{}
+	}{
+		{in: "", want: ""},
+		{in: "foo bar", want: "foo bar"},
+		{in: "foo bar=3D", want: "foo bar="},
+		{in: "foo bar=3d", want: "foo bar="}, // lax.
+		{in: "foo bar=\n", want: "foo bar"},
+		{in: "foo bar\n", want: "foo bar\n"}, // somewhat lax.
+		{in: "foo bar=0", want: "foo bar=0"},
+		{in: "foo bar=0D=0A", want: "foo bar\r\n"},
+		{in: " A B        \r\n C ", want: " A B\r\n C"},
+		{in: " A B =\r\n C ", want: " A B  C"},
+		{in: " A B =\n C ", want: " A B  C"}, // lax. treating LF as CRLF
+		{in: "foo=\nbar", want: "foobar"},
+		{in: "foo\x00bar", want: "foo\x00bar"},
+		{in: "foo bar\xff", want: "foo bar\xff"},
+
+		// Equal sign.
+		{in: "=3D30\n", want: "=30\n"},
+		{in: "=00=FF0=\n", want: "\x00\xff0"},
+
+		// Trailing whitespace
+		{in: "foo  \n", want: "foo\n"},
+		{in: "foo  \n\nfoo =\n\nfoo=20\n\n", want: "foo\n\nfoo \nfoo \n\n"},
+
+		// Tests that we allow bare \n and \r through, despite it being strictly
+		// not permitted per RFC 2045, Section 6.7 Page 22 bullet (4).
+		{in: "foo\nbar", want: "foo\nbar"},
+		{in: "foo\rbar", want: "foo\rbar"},
+		{in: "foo\r\nbar", want: "foo\r\nbar"},
+		{in: "foo=\r\nbar", want: "foobar"},
+
+		// Different types of soft line-breaks.
+		{in: "foo=\r\nbar", want: "foobar"},
+		{in: "foo=\nbar", want: "foobar"},
+		{in: "foo=\rbar", want: "foo=\rbar"},
+		{in: "foo=\r\r\r \nbar", want: "foobar"},
+
+		// Example from RFC 2045:
+		{in: "Now's the time =\n" + "for all folk to come=\n" + " to the aid of their country.",
+			want: "Now's the time for all folk to come to the aid of their country."},
+
+		// Cention bad email
+		{in: "Sendt fra min iPad=", want: "Sendt fra min iPad"},
+		{in: "<div src=\"http://123.456.789.88\">", want: "<div src=\"http://123.456.789.88\">"},
 	}
 	for _, tt := range tests {
 		var buf bytes.Buffer
@@ -84,7 +162,6 @@ func TestReader(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func everySequence(base, alpha string, length int, fn func(string)) {
@@ -116,7 +193,7 @@ func TestExhaustive(t *testing.T) {
 			return
 		}
 		buf.Reset()
-		_, err := io.Copy(&buf, NewReader(strings.NewReader(s)))
+		_, err := io.Copy(&buf, NewStrictReader(strings.NewReader(s)))
 		if err != nil {
 			errStr := err.Error()
 			if strings.Contains(errStr, "invalid bytes after =:") {
@@ -192,12 +269,19 @@ func TestExhaustive(t *testing.T) {
 	sort.Strings(outcomes)
 	got := strings.Join(outcomes, "\n")
 	want := `OK: 21576
-invalid bytes after =: 3397
+invalid bytes after =: 4081
 quotedprintable: invalid hex byte 0x0a: 1400
-quotedprintable: invalid hex byte 0x0d: 2700
-quotedprintable: invalid hex byte 0x20: 2490
-quotedprintable: invalid hex byte 0x3d: 440
-unexpected EOF: 3122`
+quotedprintable: invalid hex byte 0x0d: 2554
+quotedprintable: invalid hex byte 0x20: 2344
+quotedprintable: invalid hex byte 0x3d: 424
+unexpected EOF: 2746`
+	// 	want := `OK: 21576
+	// invalid bytes after =: 3397
+	// quotedprintable: invalid hex byte 0x0a: 1400
+	// quotedprintable: invalid hex byte 0x0d: 2700
+	// quotedprintable: invalid hex byte 0x20: 2490
+	// quotedprintable: invalid hex byte 0x3d: 440
+	// unexpected EOF: 3122`
 	if got != want {
 		t.Errorf("Got:\n%s\nWant:\n%s", got, want)
 	}
