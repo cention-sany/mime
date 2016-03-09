@@ -158,8 +158,12 @@ func checkMediaTypeDisposition(s string) error {
 func lossyCheckMediaTypeDisposition(p *PMTErr, s string) (string, error) {
 	typ, rest := consumeToken(s)
 	if typ == "" {
-		p.addUnrecover(mimeNoMediaType)
-		return "", mimeNoMediaType
+		if rest == "" {
+			p.addUnrecover(mimeNoMediaType)
+			return "", mimeNoMediaType
+		}
+		p.add(mimeNoMediaType)
+		return "unknown", mimeNoMediaType
 	}
 	if rest == "" {
 		return typ, nil
@@ -194,7 +198,6 @@ func ParseMediaType(v string) (mediatype string, params map[string]string, gerr 
 		i = len(v)
 	}
 	mediatype = strings.TrimSpace(strings.ToLower(v[0:i]))
-
 	mediatype, err := lossyCheckMediaTypeDisposition(p, mediatype)
 	if err != nil {
 		if p.bad {

@@ -171,7 +171,7 @@ func TestParseMediaType(t *testing.T) {
 		{`x=y; filename=foo.html`,
 			"x/unknown", m("filename", "foo.html")},
 		{`"foo; filename=bar;baz"; filename=qux`,
-			"", m()},
+			"unknown", m("filename", "bar")},
 		{`inline; attachment; filename=foo.html`,
 			"inline", m()},
 		{`attachment; filename="foo.html".txt`,
