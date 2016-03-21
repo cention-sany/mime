@@ -170,7 +170,7 @@ func TestParseMediaType(t *testing.T) {
 			"filename/unknown", m()},
 		{`x=y; filename=foo.html`,
 			"x/unknown", m("filename", "foo.html")},
-		{`"foo; filename=bar;baz"; filename=qux`,
+		{`"foo; filename=bar;baz"; filename=qux`, // SANYTODO: need to improve this
 			"unknown", m("filename", "bar")},
 		{`inline; attachment; filename=foo.html`,
 			"inline", m()},
@@ -223,7 +223,8 @@ func TestParseMediaType(t *testing.T) {
 			"text/html",
 			m("charset", "iso-8859-1")},
 		{`text/plain; charset=""`,
-			"text/plain", m()},
+			"text/plain",
+			m()},
 		{`IMAGE/; CHARSET=UTF-8; name="Pennygirl.PNG"`,
 			"image/unknown",
 			m("charset", "UTF-8", "name", "Pennygirl.PNG")},
@@ -233,6 +234,16 @@ func TestParseMediaType(t *testing.T) {
 		{`PDF; name="4707810273.PDF"`, // appear on Content-Type
 			"pdf",
 			m("name", "4707810273.PDF")},
+		{`""; name="4707810273.PDF"`, // appear on Content-Type
+			"unknown",
+			m("name", "4707810273.PDF")},
+		{`; CHARSET=UTF-8; name="abc.PNG"`, // appear on Content-Type
+			"unknown",
+			m("charset", "UTF-8", "name", "abc.PNG")},
+		{`; name="ff3a94f560f1cf588a473cb8a06db475"`, // appear on Acne emails
+			"unknown",
+			m("name", "ff3a94f560f1cf588a473cb8a06db475")},
+		{"", "", m()},
 
 		// discriminate ignorable error
 		{`application/octet-stream; name=Viktoria C`,
