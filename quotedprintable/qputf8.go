@@ -143,5 +143,5 @@ func (q *qpUTF8) release(p []byte, count *int, max int) bool {
 }
 
 func NewUTF8Reader(r io.Reader) io.Reader {
-	return newQPUTF8(r)
+	return newQPUTF8(NewReader(r))
 }
