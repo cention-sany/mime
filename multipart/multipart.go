@@ -118,7 +118,21 @@ func newPart(mr *Reader) (*Part, error) {
 	const cte = "Content-Transfer-Encoding"
 	if bp.Header.Get(cte) == "quoted-printable" {
 		bp.Header.Del(cte)
-		bp.r = quotedprintable.NewReader(bp.r)
+		var useUTF8 bool
+		typ, params, err := mime.ParseMediaType(bp.Header.Get("Content-Type"))
+		if err == nil || (err != nil && mime.IsOkPMTError(err) == nil) {
+			if strings.HasPrefix(typ, "text/") {
+				charset := strings.ToLower(params["charset"])
+				if charset == "utf8" || charset == "utf-8" {
+					useUTF8 = true
+				}
+			}
+		}
+		if useUTF8 {
+			bp.r = quotedprintable.NewUTF8Reader(bp.r)
+		} else {
+			bp.r = quotedprintable.NewReader(bp.r)
+		}
 	}
 	return bp, err
 }
