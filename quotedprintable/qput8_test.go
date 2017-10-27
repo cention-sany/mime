@@ -27,7 +27,7 @@ var tstData1 = []struct {
 	{ //6
 		in:  "language:EN-US\">Bra fr\xC3\n\xA5ga som jag",
 		out: "language:EN-US\">Bra fr\xC3\xA5ga som jag"},
-	{ //7
+	{ //7 - only proper end of line pattern (\n or \r\n) will be filtered
 		in:  "language:EN-US\">Bra fr\xC3\n\n\xA5ga som jag",
 		out: "language:EN-US\">Bra fr\xC3\n\n\xA5ga som jag"},
 	{ //8
@@ -151,6 +151,15 @@ var tstData1 = []struct {
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789🤐`},
+	{ //13
+		in:  "leveransbekr\xC3\xA4ftelse\xE2\x80\n\x9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
+	{ //14
+		in:  "leveransbekr\xC3\xA4ftelse\xE2\x80\r\n\x9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
+	{ //15 - only proper \n or \r\n will be filtered
+		in:  "leveransbekr\xC3\xA4ftelse\xE2\x80\n\n\x9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\n\n\x9D eller vad menas? <br>"},
 }
 
 func Test_qpUTF8(t *testing.T) {
@@ -312,6 +321,15 @@ var tstData2 = []struct {
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789🤐`},
+	{ //13
+		in:  "leveransbekr=C3=A4ftelse=E2=80\n=9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
+	{ //14
+		in:  "leveransbekr=C3=A4ftelse=E2=80\r\n=9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
+	{ //15 - only proper \n or \r\n will be filtered
+		in:  "leveransbekr=C3=A4ftelse=E2=80\n\r=9D eller vad menas? <br>",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\n\r\x9D eller vad menas? <br>"},
 }
 
 func Test_NewUTF8Reader(t *testing.T) {

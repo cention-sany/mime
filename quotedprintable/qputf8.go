@@ -4,6 +4,7 @@ package quotedprintable
 
 import (
 	"io"
+	"unicode/utf8"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 type qpUTF8 struct {
 	r     io.Reader
 	state int
+	pos   int // index of first end-of-line char on own buffer
 	pco   int // producer counter for own buffer
 	cco   int // consumer counter for own buffer
 	own   [6]byte
@@ -77,13 +79,16 @@ func (q *qpUTF8) cycle(p []byte, start, n, max int, count *int) bool {
 				}
 			}
 		case stStart:
+			currentPos := q.pco
 			q.own[q.pco] = b
 			q.pco++
 			if b == 0x0d {
+				q.pos = currentPos
 				q.state = st0x0D
 			} else if b == 0x0a {
+				q.pos = currentPos
 				q.state = st0x0A
-			} else {
+			} else if b&0xc0 != 0x80 || q.pco >= utf8.UTFMax {
 				q.state = stRelease
 			}
 		case st0x0D:
@@ -96,8 +101,8 @@ func (q *qpUTF8) cycle(p []byte, start, n, max int, count *int) bool {
 			}
 		case st0x0A:
 			if b&0xc0 == 0x80 {
-				q.own[1] = b
-				q.pco = 2
+				q.own[q.pos] = b
+				q.pco = q.pos + 1
 				q.state = st0x10XXXXXX
 			} else {
 				q.own[q.pco] = b
