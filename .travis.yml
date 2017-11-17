@@ -1,0 +1,12 @@
+language: go
+
+branches:
+  only:
+    - master
+
+go:
+  - 1.8.5
+  - tip
+
+install:
+  - go get -v ./...
