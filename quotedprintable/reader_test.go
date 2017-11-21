@@ -286,3 +286,168 @@ unexpected EOF: 2746`
 		t.Errorf("Got:\n%s\nWant:\n%s", got, want)
 	}
 }
+
+func TestLongBuffer(t *testing.T) {
+	const (
+		testLongSize = 4100
+	)
+	var (
+		tstdata [testLongSize]byte
+		data2   [testLongSize + 4]byte
+		buf     bytes.Buffer
+	)
+	for i := 0; i < testLongSize; i++ {
+		tstdata[i] = 'A'
+	}
+	_, err := io.Copy(&buf, NewReader(strings.NewReader(string(tstdata[:]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want := string(tstdata[:])
+	got := buf.String()
+	if got != want {
+		t.Errorf("Test identity: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i, v := range tstdata {
+		data2[i] = v
+	}
+	data2[4095] = '='
+	data2[4096] = '\n'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:testLongSize]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want = string(tstdata[:testLongSize-2])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test break LF: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i, v := range tstdata {
+		data2[i] = v
+	}
+	data2[4095] = '='
+	data2[4096] = '\r'
+	data2[4097] = '\n'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:testLongSize]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want = string(tstdata[:testLongSize-3])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test break CRLF: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i, v := range tstdata {
+		data2[i] = v
+	}
+	data2[4095] = '='
+	data2[4096] = '{'
+	data2[4097] = '}'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:testLongSize]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want = string(data2[:testLongSize])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test unescape equal 1: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i, v := range tstdata {
+		data2[i] = v
+	}
+	data2[4095] = '='
+	data2[4096] = '{'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:4097]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want = string(data2[:4097])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test unescape equal 2: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i, v := range tstdata {
+		data2[i] = v
+	}
+	data2[4094] = '='
+	data2[4095] = '{'
+	data2[4096] = '}'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:testLongSize]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	want = string(data2[:testLongSize])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test unescape equal 3: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	for i := range data2 {
+		data2[i] = '='
+	}
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	// last '=' b4 io.EOF always get truncate because it is assumed as
+	// quoted-printable soft break.
+	want = string(data2[:len(data2)-1])
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test all equal sign: Expect %s but got %s", want, got)
+	}
+
+	buf.Reset()
+	want = string(tstdata[:4095]) + "☎" // black telephone \u260e
+	for i := 0; i < 4095; i++ {
+		data2[i] = tstdata[i]
+	}
+	data2[4095] = '='
+	data2[4096] = 'E'
+	data2[4097] = '2'
+	data2[4098] = '='
+	data2[4099] = '9'
+	data2[4100] = '8'
+	data2[4101] = '='
+	data2[4102] = '8'
+	data2[4103] = 'E'
+	_, err = io.Copy(&buf, NewReader(strings.NewReader(string(data2[:]))))
+	if err != nil {
+		t.Errorf("Expect nil error but got: %v", err)
+	}
+	got = buf.String()
+	if got != want {
+		t.Errorf("Test break non-ascii: Expect %s but got %s", want, got)
+	}
+}
+
+func TestErrorReader(t *testing.T) {
+	rerr := new(RErr)
+	const noError = "<nil>"
+	if s := rerr.Error(); s != noError {
+		t.Errorf("Expect empty error return %s but got: %s", noError, s)
+	}
+	rerr.add(nil)
+	rerr.add(errors.New("test1"))
+	rerr.add(errors.New("test2"))
+	const multiErrors = "test1|test2"
+	if s := rerr.Error(); s != multiErrors {
+		t.Errorf("Expect error string: %s but got: %s", multiErrors, s)
+	}
+	const badError = "test3"
+	rerr.addUnrecover(errors.New(badError))
+	if s := rerr.Error(); s != badError {
+		t.Errorf("Expect error string: %s but got: %s", badError, s)
+	}
+}

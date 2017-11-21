@@ -11,9 +11,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 )
 
-const maxQPRErr = 4
+const (
+	maxQPRErr = 4
+	maxQPBuf  = 3
+)
 
 type RErr struct {
 	count int
@@ -25,9 +29,13 @@ func (q *RErr) Error() string {
 	if q.err != nil {
 		return q.err.Error()
 	} else if q.count > 0 {
-		return q.errs[0].Error()
+		errs := make([]string, 0, q.count)
+		for i := 0; i < q.count; i++ {
+			errs = append(errs, q.errs[i].Error())
+		}
+		return strings.Join(errs, "|")
 	}
-	return ""
+	return "<nil>"
 }
 
 // add error that is recoverable. After this, the modified func
@@ -66,6 +74,8 @@ type Reader struct {
 	gerr *RErr
 	rerr error  // last read error
 	line []byte // to be consumed before more of br
+	prev [4]byte
+	last []byte
 }
 
 func getReader(r io.Reader) *Reader {
@@ -147,10 +157,22 @@ func (r *Reader) Read(p []byte) (int, error) {
 	for len(p) > 0 {
 		if len(r.line) == 0 {
 			if err = r.Fn(); err != nil {
+				// eject all pending bytes
+				for len(r.last) > 0 && len(p) > 0 {
+					p[0] = r.last[0]
+					p = p[1:]
+					r.last = r.last[1:]
+					n++
+				}
 				return n, err
 			}
 			r.line, r.rerr = r.br.ReadSlice('\n')
-			r.gerr.addUnrecover(r.rerr)
+			if r.rerr == bufio.ErrBufferFull {
+				r.gerr.add(r.rerr)
+				continue
+			} else {
+				r.gerr.addUnrecover(r.rerr)
+			}
 
 			// Does the line end in CRLF instead of just LF?
 			hasLF := bytes.HasSuffix(r.line, lf)
@@ -159,6 +181,8 @@ func (r *Reader) Read(p []byte) (int, error) {
 			r.line = bytes.TrimRightFunc(wholeLine, isQPDiscardWhitespace)
 			if bytes.HasSuffix(r.line, softSuffix) {
 				rightStripped := wholeLine[len(r.line):]
+				// last '=' before io.EOF is always been dropped as it is
+				// treated as quoted-printable soft-break.
 				r.line = r.line[:len(r.line)-1]
 				if !bytes.HasPrefix(rightStripped, lf) && !bytes.HasPrefix(rightStripped, crlf) {
 					r.rerr = fmt.Errorf("quotedprintable: invalid bytes after =: %q", rightStripped)
@@ -173,22 +197,81 @@ func (r *Reader) Read(p []byte) (int, error) {
 			}
 			continue
 		}
+		lastNum := len(r.last)
+		if lastNum > 0 {
+			b := r.last[0]
+			if b == '=' {
+				if lastNum == 1 {
+					if bytes.HasPrefix(r.line, lf) {
+						r.line = r.line[len(lf):]
+						r.last = nil
+						if len(r.line) == 0 {
+							continue
+						}
+					} else if bytes.HasPrefix(r.line, crlf) {
+						r.line = r.line[len(crlf):]
+						r.last = nil
+						if len(r.line) == 0 {
+							continue
+						}
+					} else if len(r.line) < 2 {
+						// only possible is length r.line is 1
+						r.prev[1] = r.line[0]
+						r.line = r.line[1:]
+						r.last = r.prev[:2]
+						continue
+					}
+				}
+				if len(r.last) > 0 {
+					diff := maxQPBuf - lastNum
+					for i := 0; i < diff; i++ {
+						r.prev[lastNum+i] = r.line[0]
+						r.line = r.line[1:]
+					}
+					r.last = r.prev[:maxQPBuf]
+					b, err = readHexByte(r.last[1:])
+					if err != nil {
+						b = '='
+						r.gerr.add(err)
+					} else {
+						r.last = r.last[2:]
+					}
+				}
+			}
+			if len(r.last) > 0 {
+				p[0] = b
+				p = p[1:]
+				r.last = r.last[1:]
+				n++
+				continue
+			}
+		}
 		b := r.line[0]
 
 		switch {
 		case b == '=':
 			b, err = readHexByte(r.line[1:])
 			if err != nil {
+				if err == io.ErrUnexpectedEOF && r.rerr == bufio.ErrBufferFull {
+					n := len(r.line)
+					for i := 0; i < n; i++ {
+						r.prev[i] = r.line[i]
+					}
+					r.last = r.prev[:n]
+					r.line = nil
+					break
+				}
 				b = '='
 				r.gerr.add(err)
 				break // this modification allow bad email to be parsed too
-				//return n, err
 			}
 			r.line = r.line[2:] // 2 of the 3; other 1 is done below
 		case b == '\t' || b == '\r' || b == '\n':
 		case b < ' ' || b > '~':
-			//return n, fmt.Errorf("quotedprintable: invalid unescaped byte 0x%02x in body", b)
 			r.gerr.add(fmt.Errorf("quotedprintable: invalid unescaped byte 0x%02x in body", b))
+		}
+		if len(r.last) > 0 {
+			continue
 		}
 		p[0] = b
 		p = p[1:]
