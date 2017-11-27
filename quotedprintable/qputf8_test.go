@@ -321,15 +321,24 @@ var tstData2 = []struct {
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 	23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789🤐`},
-	{ //13
-		in:  "leveransbekr=C3=A4ftelse=E2=80\n=9D eller vad menas? <br>",
+	{ //13 - correction at between 2nd and 3rd (\n) unicode bytes and improper EOF will be filtered.
+		in:  "leveransbekr=C3=A4ftelse=E2=80\n=9D eller vad menas? <br>=CE=AE=CE",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>\xCE\xAE"},
+	{ //14 - correction at between 2nd and 3rd (\r\n) unicode bytes and improper EOF will be filtered.
+		in:  "leveransbekr=C3=A4ftelse=E2=80\r\n=9D eller vad menas? <br>=CE\n",
 		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
-	{ //14
-		in:  "leveransbekr=C3=A4ftelse=E2=80\r\n=9D eller vad menas? <br>",
-		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\x9D eller vad menas? <br>"},
-	{ //15 - only proper \n or \r\n will be filtered
-		in:  "leveransbekr=C3=A4ftelse=E2=80\n\r=9D eller vad menas? <br>",
-		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\n\r\x9D eller vad menas? <br>"},
+	{ //15 - improper line break - \n\r - will NOT be filtered and undetectable wrong EOF can NOT be filtered.
+		in:  "leveransbekr=C3=A4ftelse=E2=80\n\r=9D eller vad menas? <br>=CE=A",
+		out: "leveransbekr\xC3\xA4ftelse\xE2\x80\n\r\x9D eller vad menas? <br>\xCE=A"},
+	{ //16 - long chained unicode and proper unicode EOF will be allowed to output.
+		in:  "=CE=A0=CE=B5=CF=81=CE=B9=CE=B3=CF\n=81=CE=B1=CF=86=CE=AE",
+		out: "\xCE\xA0\xCE\xB5\xCF\x81\xCE\xB9\xCE\xB3\xCF\x81\xCE\xB1\xCF\x86\xCE\xAE"},
+	{ //17
+		in:  "=CE=A0=CE=B5=CF=81=CE=B9=CE=B3=CF\n=81=CE=B1=CF=86=F0=9F=A4",
+		out: "\xCE\xA0\xCE\xB5\xCF\x81\xCE\xB9\xCE\xB3\xCF\x81\xCE\xB1\xCF\x86\xF0\x9F\xA4"},
+	{ //18
+		in:  "=CE=A0=CE=B5=CF=81=CE=B9=CE=B3=CF\n=81=CE=B1=CF=86=F0=9F=A4a",
+		out: "\xCE\xA0\xCE\xB5\xCF\x81\xCE\xB9\xCE\xB3\xCF\x81\xCE\xB1\xCF\x86\xF0\x9F\xA4a"},
 }
 
 func Test_NewUTF8Reader(t *testing.T) {
