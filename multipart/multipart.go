@@ -97,9 +97,18 @@ func (p *Part) parseContentDisposition() {
 // the message's "Content-Type" header. Use mime.ParseMediaType to
 // parse such headers.
 func NewReader(r io.Reader, boundary string) *Reader {
+	return newReader(r, boundary, false)
+}
+
+func NewCorrectUTF8QPReader(r io.Reader, boundary string) *Reader {
+	return newReader(r, boundary, true)
+}
+
+func newReader(r io.Reader, boundary string, correctUTF8qp bool) *Reader {
 	b := []byte("\r\n--" + boundary + "--")
 	return &Reader{
 		bufReader:        bufio.NewReaderSize(r, peekBufferSize),
+		correctUTF8qp:    correctUTF8qp,
 		nl:               b[:2],
 		nlDashBoundary:   b[:len(b)-2],
 		dashBoundaryDash: b[2:],
@@ -119,12 +128,14 @@ func newPart(mr *Reader) (*Part, error) {
 	if bp.Header.Get(cte) == "quoted-printable" {
 		bp.Header.Del(cte)
 		var useUTF8 bool
-		typ, params, err := mime.ParseMediaType(bp.Header.Get("Content-Type"))
-		if err == nil || (err != nil && mime.IsOkPMTError(err) == nil) {
-			if strings.HasPrefix(typ, "text/") {
-				charset := strings.ToLower(params["charset"])
-				if charset == "utf8" || charset == "utf-8" {
-					useUTF8 = true
+		if mr.correctUTF8qp {
+			typ, params, err := mime.ParseMediaType(bp.Header.Get("Content-Type"))
+			if err == nil || (err != nil && mime.IsOkPMTError(err) == nil) {
+				if strings.HasPrefix(typ, "text/") {
+					charset := strings.ToLower(params["charset"])
+					if charset == "utf8" || charset == "utf-8" {
+						useUTF8 = true
+					}
 				}
 			}
 		}
@@ -230,6 +241,8 @@ type Reader struct {
 
 	currentPart *Part
 	partsRead   int
+
+	correctUTF8qp bool
 
 	nl               []byte // "\r\n" or "\n" (set after seeing first boundary line)
 	nlDashBoundary   []byte // nl + "--boundary"
