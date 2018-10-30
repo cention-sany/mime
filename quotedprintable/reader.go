@@ -278,5 +278,5 @@ func (r *Reader) Read(p []byte) (int, error) {
 		r.line = r.line[1:]
 		n++
 	}
-	return n, r.Fn()
+	return n, nil
 }
