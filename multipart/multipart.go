@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+
 	//"net/textproto"
 	"strings"
 
@@ -187,8 +188,8 @@ func (pr partReader) Read(d []byte) (n int, err error) {
 	if p.bytesRead == 0 && p.mr.peekBufferIsEmptyPart(peek) {
 		return 0, io.EOF
 	}
-	unexpectedEOF := err == io.EOF
-	if err != nil && !unexpectedEOF {
+	noMoreData := err == io.EOF
+	if err != nil && err != io.EOF {
 		return 0, fmt.Errorf("multipart: Part Read: %v", err)
 	}
 	if peek == nil {
@@ -206,13 +207,14 @@ func (pr partReader) Read(d []byte) (n int, err error) {
 		if !isEnd && nCopy == 0 {
 			nCopy = 1 // make some progress.
 		}
+	} else if noMoreData {
+		// when no more data found and no boundary marker, then we should
+		// copy all data into p.buffer
+		nCopy = len(peek)
 	} else if safeCount := len(peek) - len(p.mr.nlDashBoundary); safeCount > 0 {
+		// we reserve a at least len(p.mr.nlDashBoundary) to ensure we
+		// get a complete boundary marker (not partially cut)
 		nCopy = safeCount
-	} else if unexpectedEOF {
-		// If we've run out of peek buffer and the boundary
-		// wasn't found (and can't possibly fit), we must have
-		// hit the end of the file unexpectedly.
-		return 0, io.ErrUnexpectedEOF
 	}
 	if nCopy > 0 {
 		if _, err := io.CopyN(p.buffer, p.mr.bufReader, int64(nCopy)); err != nil {
@@ -220,7 +222,7 @@ func (pr partReader) Read(d []byte) (n int, err error) {
 		}
 	}
 	n, err = p.buffer.Read(d)
-	if err == io.EOF && !foundBoundary {
+	if err == io.EOF && !noMoreData && !foundBoundary {
 		// If the boundary hasn't been reached there's more to
 		// read, so don't pass through an EOF from the buffer
 		err = nil
@@ -264,7 +266,7 @@ func (r *Reader) CheckNextPart() error {
 	bfb := bufio.NewReader(bytes.NewReader(nb))
 	for {
 		line, err := bfb.ReadSlice('\n')
-		if err == io.EOF && r.isFinalBoundary(line) {
+		if err == io.EOF || err == io.EOF && r.isFinalBoundary(line) {
 			// If the buffer ends in "--boundary--" without the
 			// trailing "\r\n", ReadSlice will return an error
 			// (since it's missing the '\n'), but this is a valid
@@ -311,7 +313,7 @@ func (r *Reader) NextPart() (*Part, error) {
 	expectNewPart := false
 	for {
 		line, err := r.bufReader.ReadSlice('\n')
-		if err == io.EOF && r.isFinalBoundary(line) {
+		if err == io.EOF || err == io.EOF && r.isFinalBoundary(line) {
 			// If the buffer ends in "--boundary--" without the
 			// trailing "\r\n", ReadSlice will return an error
 			// (since it's missing the '\n'), but this is a valid
